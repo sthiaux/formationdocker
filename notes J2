@@ -1,0 +1,278 @@
+
+bcp d'option dans 
+docker run --help
+
+docker volume create --name myvol1
+docker volume create --name myvol2
+docker volume ls
+=> driver local
+
+
+ceph +ocfs2
+
+docker volume inspect myvol1
+=>         "Mountpoint": "/var/lib/docker/volumes/myvol1/_data",
+
+docker run -ti -v test1:/www/website ubuntu bash
+# echo "test"> /www/website/test.txt
+
+ll /var/lib/docker/volumes/test1/_data/test.txt
+
+docker run -ti -v test1:/www/html ubuntu bash
+=> pointe sur le meme volume que le précédent. c le nom du volume qui compte
+
+
+docker volume rm nomduvolume
+=> ne supprime pas si utilisé
+
+docker rm -v id 
+=> supprime le container et le volume associé
+
+
+docker run -ti  -v /home/formation/tp5/:/var/www ubuntu sh
+=>monte /home/formation/tp5/ sur /var/www
+
+=> intéret : développer directement dans le volume avec son IDE et tester avec le container docker
+
+docker run -ti  -v /home/formation/tp5/:/var/www:ro ubuntu sh
+=> en ro
+
+
+docker run -d -P --name nginx_server -v ~/public_html:/usr/share/nginx/html -v nginx_logs:/var/log/nginx trainingteam/nginx
+=> ~/public_html => dans le home
+=> nginx_logs dans var lib docker
+
+docker exec -it nginx_server bash
+
+docker run -it -v nginx_logs:/data:ro ubuntu sh -c 'tail -f /data/*'
+
+
+cat Dockerfile 
+#volumes
+FROM ubuntu:latest
+RUN apt-get update && apt-get -y install wget
+RUN mkdir -p /data/myvol && echo test > /data/myvol/testfile
+VOLUME ["/data/myvol"]
+
+docker inspect abdbe1284f64
+=> on voit les volumes et les mount mountpoint
+
+docker run -itd --name c1 testvol bash
+docker run -it --volumes-from c1 ubuntu bash
+=> on voit le volume dans /data/myvol
+=> exemple pour faire une sauvegarde , ou autre chose
+
+
+cadvisor
+prometheus
+graphana
+https://status.caas.fr/
+plus de monitoring nagios. seulement des sondes qui vont vérifier les services .
+la mise en public se fait grace a des varible d'environnements qu'il faut positionner et puis un reverse proxy
+
+###################################
+
+brctl show
+ip a
+
+docker run -it --ip 10.10.10.10 ubuntu bash
+=>docker: Error response from daemon: User specified IP address is supported on user defined networks only.
+=> il faut créer le network au préalable 
+
+
+docker network create front
+docker network create middle
+docker network create back
+docker network create asupprimer
+
+docker network rm asupprimer 
+docker network ls
+docker network inspect front
+docker network create --help
+
+
+docker run -d --net=host nginx
+=> run un docker en local dispo sur mon IP
+
+docker run -d --net=host nginx 
+=> KO, le ports est déjà utilisé
+
+
+formation@formation-Latitude-E5410:~$ docker run -dti --name c1 --net=front alpine sh
+f3d80fba00dce418397c0e447584cb6a244066ed0ebdb52e4e6ec9838c4c576d
+formation@formation-Latitude-E5410:~$ docker run -dti --name c2 --net=back alpine sh
+6e26db0cb5e0fa7139d758b564b2b27d7e77eb49f12bf72c9e6dd4ab6ef99e55
+formation@formation-Latitude-E5410:~$ docker run -dti --name c3 --net=middle alpine sh
+136c59732b0b5719141cfb7175eee27dc3d6f139a99c9238eadcc77189d1da7f
+
+=>
+root@formation-Latitude-E5410:~# brctl  show
+bridge name	bridge id		STP enabled	interfaces
+br-6506388262dd		8000.02426f9d870d	no		veth440631c
+br-b7704933ce6d		8000.0242bd781ea5	no		vethcece452
+br-e48c8558c57b		8000.0242be8ff41e	no		vethab80f5a
+
+docker exec -it c1 sh
+/ # ping c2
+ping: bad address 'c2'
+
+
+formation@formation-Latitude-E5410:~$ docker run -ti --rm --name ping  --net=front alpine sh
+/ # ping c1
+PING c1 (172.18.0.2): 56 data bytes
+64 bytes from 172.18.0.2: seq=0 ttl=64 time=0.164 ms
+64 bytes from 172.18.0.2: seq=1 ttl=64 time=0.137 ms
+^C
+--- c1 ping statistics ---
+2 packets transmitted, 2 packets received, 0% packet loss
+round-trip min/avg/max = 0.137/0.150/0.164 ms
+/ # ping c2
+ping: bad address 'c2'
+/ # ping c1.front
+PING c1.front (172.18.0.2): 56 data bytes
+64 bytes from 172.18.0.2: seq=0 ttl=64 time=0.119 ms
+^C
+--- c1.front ping statistics ---
+1 packets transmitted, 1 packets received, 0% packet loss
+round-trip min/avg/max = 0.119/0.119/0.119 ms
+/ # ping c2.middle
+ping: bad address 'c2.middle'
+/ # 
+
+
+docker network connect middle ping
+=> permet à ping de pinger c3 et c1
+/ # ip a | grep "inet "
+    inet 127.0.0.1/8 scope host lo
+    inet 172.18.0.3/16 scope global eth0
+    inet 172.19.0.3/16 scope global eth1
+
+
+
+
+ensuite on peut faire un reverse proxy nginx qui pointe sur différents container
+consul et consul template
+
+
+caas utilise nginx avec lets encrypt
+
+ne rien installer sur le host.
+exemple pour l'agent de sup, faire un container et passer par la socket docker
+
+
+le serveur DNS est embarqué. ne jamais utiliser les ip
+
+
+docker run -d -p 81:80 nginx
+docker run -d -p 81:80 --net=front nginx
+
+
+docker run -d -p 81:80 -p 443:443 --net=front nginx
+docker port $(docker ps -alq)
+=>443/tcp -> 0.0.0.0:443
+=>80/tcp -> 0.0.0.0:81
+
+
+docker run -d -P --net=front nginx
+docker port $(docker ps -alq)
+80/tcp -> 0.0.0.0:32779
+443/tcp -> 0.0.0.0:32778
+
+
+cat Dockerfile 
+#sfd
+FROM ubuntu
+RUN apt-get update && apt-get -y install nginx
+EXPOSE 80 443
+CMD ["nginx", "-g" , "daemon off;"]
+
+
+
+
+
+========================================
+
+créet un repot github
+aller sur docker hub et linker le compte github
+
+create automatic build dans docker ( faut le faire 2 fois)
+
+git clone https://github.com/sth35web/formationdocker.git
+
+
+cat Dockerfile
+#formationdocker
+FROM ubuntu
+MAINTAINER sebastien thiaux <sth35web@gmail.com>
+RUN apt-get update && \
+    apt-get install -y wget curl
+CMD ["bash"]
+
+docker build -t test .
+git add .
+git commit -m "init dockerfile"
+git config --global user.email "sth35web@gmail.com"
+git config --global user.name "sth35web"
+git push
+
+dans dockerhub/bilddetails , un hook a été déclanché
+
+gitlab-ci
+il faut configurer un runner .... qui sont eux meme des container
+
+
+kitchen est utilisé pour faire les tests middleware
+
+
+================================================
+
+
+docker network create service-monitor
+
+
+docker run -d --name service-1 --net service-monitor -v ~/public_html:/usr/share/nginx/html -v nginx_logs:/var/log/nginx trainingteam/nginx
+
+cat Dockerfile
+#ubuntu
+FROM ubuntu
+MAINTAINER sebastien thiaux <sth35web@gmail.com>
+RUN apt-get update && \
+    apt-get install -y wget curl
+CMD ["bash"]
+
+
+
+-------------------------------------------
+TP: faire un microservice interne non exposé et l'interroger
+
+docker network create service-monitor
+
+docker run -d --name service-1 --net service-monitor -v ~/public_html:/usr/share/nginx/html -v nginx_logs:/var/log/nginx trainingteam/nginx
+
+
+cat Dockerfile
+#ubuntu
+FROM ubuntu
+ENV SERVER service-1.service-monitor
+MAINTAINER sebastien thiaux <sth35web@gmail.com>
+RUN apt-get update && \
+    apt-get install -y wget curl
+ENV FILE 1
+ENTRYPOINT curl http://$SERVER/$FILE.html
+
+
+docker build -t testcurl .
+
+docker run -ti -e FILE=1 --rm --net service-monitor testcurl
+docker run -ti -e FILE=2 --rm --net service-monitor testcurl
+docker run -ti -e FILE=3 --rm --net service-monitor testcurl
+
+-----------------------------------
+
+
+curl -L https://github.com/docker/compose/releases/download/1.9.0-rc3/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+curl -L https://github.com/docker/machine/releases/download/v0.8.2/docker-machine-`uname -s`-`uname -m` >/usr/local/bin/docker-machine
+chmod +x /usr/local/bin/docker-machine
+
+
