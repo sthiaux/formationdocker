@@ -1,0 +1,241 @@
+docker search httpd
+docker search herveleclerc
+docker images
+
+
+
+docker pull ubuntu:12.04
+
+docker rmi ubuntu:15.10
+
+docker --help
+
+il faut que le process soit bloquant , c'est à dire no daemon
+
+docker run ubuntu:latest echo "Hello World"
+=> affiche hello word
+
+docker run ubuntu:latest ps ax
+=> un seul process : le pid 1
+
+attention aux problème de place dans /var/lib/docker
+
+
+docker run --rm ubuntu:latest echo "Hello tata"
+=> permet d'effacer le container si tout c'est bien passé
+
+docker ps  / docker ps -a
+
+docker run -i -t ubuntu:latest bash
+=> -i interactif
+=> -t terminal
+=> on se connect en bash . Faire un ps : on a un pid 1
+
+
+ctrl + p +q together => rend la main
+
+
+docker attach d9d7a5a4d8b5
+=> permet de rerentrer
+=> whoami => root
+
+
+norme runC
+=> on peut faire tourner les images docker sur rocket par exemple
+
+docker run -i -t --name moncontainer ubuntu bash
+
+docker rm -f $(docker ps -aq)
+=> supprime tous les containers
+
+docker run -d centos:7 ping 127.0.0.1 -c 100
+=> docker logs 94fea72e1002
+
+
+docker run -d httpd
+docker logs cfb197221205 
+docker rm cfb197221205 impossible
+docker rm -f cfb197221205 ok
+
+docker run -d -P nginx
+=> map les ports direcement sur le host
+=> docker ps donne les ports : on peut se connecter à http://localhost:32769/
+=> on peut en démarrer d'autres, ils prendront d'autres ports
+
+docker exec -i -t cfb197221205 bash
+=> on exec un bash dans le container
+=> root@84d8a0ae2c84:/# echo toto > /usr/share/nginx/html/index.html
+
+docker logs -f cfb197221205
+=> logs en mode tail
+
+docker logs --tail 5 -f cfb197221205
+
+
+docker exec  6b2dc602c50f bash -c 'echo hello>  /usr/share/nginx/html/index.html'
+=> permet d'ecrire directement
+
+docker inspect 6b2dc602c50f
+=> détail du container
+
+docker inspect 6b2dc602c50f | grep IPAddress
+=> on peut accéder à nginx directement en http://172.17.0.2:80
+
+docker inspect --format='{{json .NetworkSettings.IPAddress}}' 6b2dc602c50f 
+=> recupere en json
+
+#####################################################"
+
+
+docker run -t -i ubuntu bash
+#apt-get update
+# apt-get install wget net-tools vim inetutils-ping
+
+docker diff 20b309594ac7
+=>affiche les diff
+
+docker commit 20b309594ac7 sebastien:1.0
+docker  run -t -i sebastien:1.0 bash
+#apt-get install dnsutils
+
+docker commit c6e160f7bcfc sebastien:latest
+docker commit 409c17979a3d sth35web/tp1:latest
+
+
+
+#Dockerfile TP2
+FROM ubuntu:latest
+RUN apt-get update
+RUN apt-get install -y net-tools vim
+RUN apt-get install -y inetutils-ping
+RUN apt-get clean
+
+=> une layer par commande
+=> mettre obligatoirement le -y
+
+
+docker build -t sth35web/tp2 .
+
+attention dans le répertoire du docker file il ne faut mettre que le dockerfile , le cli va tout envoyer au serveur. Sinon ca risque de prendre un certain temps.
+
+docker build -t sth35web/tp2 .
+=> tres rapide la seconde fois
+=> un hash de chaque commande RUN est utilisé
+=> attention si on change l'ordre des commandes sur une meme ligne : ca rebuild!
+
+
+
+#Dockerfile TP2
+FROM ubuntu:latest
+RUN apt-get update && apt-get install -y net-tools vim  lynx cowsay inetutils-ping && apt-get clean
+
+
+docker history iddelimage
+=> affiche les commandes
+
+
+CMD
+=> lance une commande à la fin du run
+=> en fomat shell , ou en format exec. ( privilégier exec pour les commandes binaires)
+=> CMD ["ping", "8.8.8.8", "-c", "30"]
+=> faire un run , ca ping 8.8.8.8
+=> c'est le dernier qui est pris. ca ne sert a rien d'en mettre plusieurs
+=> docker run -t -i sth35web/tp2 ping 127.0.0.1 => ca ping 127.0.0.1 et pas 8.8.8.8
+
+
+#CMD ["ping", "8.8.8.8", "-c", "30"]
+ENTRYPOINT ["ping"]
+
+docker build -t sth35web/tp2 .
+docker run -t -i sth35web/tp2 8.8.8.8
+=> ca ping
+
+
+CMD ["8.8.8.8", "-c", "30"]
+ENTRYPOINT ["ping"]
+docker build -t sth35web/tp2 .
+docker run -t -i sth35web/tp2 => ping 8.8.8.8 (par defaut)
+docker run -t -i sth35web/tp2 127.0.0.1 => ping 127
+
+usage par exemple mettre "-h" pour avoir l'aide par defaut
+
+par contre docker run -t -i sth35web/tp2 bash ne marche plus
+=> docker run -t -i --entrypoint bash sth35web/tp2 permet de rerentrer dedans
+
+
+COPY /ADD
+ADD ( intelligent : tar, url, recursif)
+
+
+
+
+cat Dockerfile 
+#java
+FROM java:7
+COPY HelloWorld.java /
+RUN javac HelloWorld.java
+ENTRYPOINT ["java", "HelloWorld"]
+docker build -t sth35web/tp3 .
+docker run -t -i sth35web/tp3
+=>hello world
+
+
+
+docker export 1370958689f9 -o java.tar
+exporte le contenaire
+
+docker import test.tar sth35web/import
+
+
+docker save -o test2.tar sth35web/tp3
+enregistre l'image
+
+
+
+
+cat Dockerfile 
+#java
+FROM java:7
+WORKDIR /app/src
+COPY src .
+RUN mkdir ../bin
+RUN javac -d ../bin HelloWorld.java
+#RUN javac HelloWorld.java
+WORKDIR /app/bin
+ENTRYPOINT ["java", "HelloWorld"]
+
+mettre les deépendances avant l'upload du code source dans le docker file, afin que ca n'invalide pas le cache à chaque fois et que ca réinstall tout 
+
+ 
+
+cat Dockerfile 
+#cowsay
+FROM ubuntu
+RUN apt-get update && apt-get -y install cowsay
+ENV PATH $PATH:/usr/games
+CMD ["hello"]
+ENTRYPOINT ["cowsay", "-W", "80"]
+
+
+
+
+docker login
+docker push sth35web/cowsay
+docker tag sth35web/cowsay  sth35web/cowsay-priv
+docker push sth35web/cowsay-priv
+
+
+nettoyage
+
+docker rmi -f $(docker images | awk '/<none>/ {print $3}')
+docker rm -f $(docker ps -aq)
+
+
+
+
+
+
+
+
+
+
