@@ -1,0 +1,187 @@
+
+nicolas berthe
+
+#!/bin/bash
+
+subscription_id="xxxx-xxxx-xxxx-xxxx"
+size="Basic_A0"
+location="northeurope"
+users="sebastien"  ## please change this 
+
+for user in ${users}
+do
+        resource_group="${user}_rgp"
+        for i in 1 2 3
+        do
+      docker-machine create -d azure \
+      --azure-subscription-id "${subscription_id}" \
+      --azure-size "${size}"                       \
+      --azure-resource-group "${resource_group}"   \
+      --azure-open-port 80 \
+      --azure-location "${location}"               \
+      "${user}-node-${i}"
+    done
+done
+
+
+
+docker-machine ls
+NAME               ACTIVE   DRIVER   STATE     URL                         SWARM   DOCKER    ERRORS
+sebastien-node-1   -        azure    Running   tcp://52.169.155.126:2376           v1.12.3   
+sebastien-node-2   -        azure    Running   tcp://52.169.0.101:2376             v1.12.3   
+sebastien-node-3   -        azure    Running   tcp://52.169.2.39:2376              v1.12.3   
+
+
+
+--------------------------
+
+
+docker => client
+dockerd => serveur
+
+
+cat /lib/systemd/system/docker.service
+cat /etc/default/docker
+
+ports 2375 et 2376
+
+
+docker-machine ssh sebastien-node-1
+
+
+
+/etc/systemd/system/docker.service
+node3=>ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2375 -H tcp://192.168.0.6:2828 -H unix:///var/run/docker.sock
+systemctl daemon-reload
+service docker restart
+
+node-1:~$ docker -H tcp://192.168.0.6:2375 ps
+=> ok
+
+ou export DOCKER_HOST="tcp://192.168.0.6:2375"
+unset DOCKER_HOST
+
+
+________________
+
+portus
+une script sh à lancer
+____
+
+portainer.io
+demo.portainer.io
+
+_____________________
+
+
+
+
+#sur poste local
+mkdir docker-ca
+chmod 0700 docker-ca/
+cd docker-ca/
+openssl genrsa -aes256 -out ca-key.pem 2048
+openssl req -new -x509 -days 365 -key ca-key.pem -sha256 -out ca.pem
+
+mkdir cert
+cd cert/
+openssl genrsa -out server-key.pem 2048
+openssl req -subj "/CN=sebastien-node-3" -new -key server-key.pem -out server.csr
+echo subjectAltName = IP:192.168.0.6,IP:127.0.0.1 > extfile.cnf
+
+
+openssl x509 -req -days 365 -in server.csr -CA ca.pem -CAkey ca-key.pem -CAcreateserial -out server-cert.pem -extfile extfile.cnf
+
+
+---
+client
+mkdir cert-client
+cd cert-client/
+openssl genrsa -out client-key.pem 2048
+openssl req -subj "/CN=client" -new -key client-key.pem -out client.csr
+echo extendedKeyUsage = clientAuth > extfile.cnf
+openssl x509 -req -days 365 -in client.csr -CA ../docker-ca/ca.pem -CAkey ../docker-ca/ca-key.pem -CAcreateserial -out client-cert.pem -extfile extfile.cnf 
+
+
+
+------
+formation@formation-Latitude-E5410:~/docker-ca$ docker-machine scp ca.pem sebastien-node-3:/tmp/
+ca.pem                                                                          100% 1269     1.2KB/s   00:00    
+formation@formation-Latitude-E5410:~/docker-ca$ docker-machine scp server-key.pem sebastien-node-3:/tmp/
+server-key.pem                                                                  100% 1676     1.6KB/s   00:00    
+formation@formation-Latitude-E5410:~/docker-ca$ docker-machine scp server-cert.pem sebastien-node-3:/tmp/
+server-cert.pem   
+
+
+root@sebastien-node-3:~# cp /tmp/ca.pem /etc/docker/ca2.pem ; cp /tmp/server-cert.pem /etc/docker/server-cert2.pem; cp /tmp/server-key.pem /etc/docker/server-key2.pem
+
+root@sebastien-node-1:~# cp /tmp/ca.pem /etc/docker/ca2.pem ; cp /tmp/client-cert.pem /etc/docker/client-cert2.pem; cp /tmp/client-key.pem /etc/docker/client-key2.pem   
+
+sur node 3:
+ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2375 -H tcp://192.168.0.6:2828 -H unix:///var/run/docker.sock --tlsverify --tlscacert /etc/docker/ca2.pem --tlscert /etc/docker/server-cert2.pem --tlskey /etc/docker/server-key2.pem
+
+
+ 
+
+root@sebastien-node-1:~# mv /etc/docker/ca2.pem /home/docker-user/.docker ; mv /etc/docker/
+
+docker-user@sebastien-node-1:~/.docker$ docker --tlsverify --tlscacert=ca2.pem --tlscert=client-cert2.pem --tlskey=client-key2.pem -H=tcp://192.168.0.6:2375  ps -a
+
+
+docker-user@sebastien-node-1:~/.docker$ mv ca2.pem ca.pem 
+docker-user@sebastien-node-1:~/.docker$ mv client-cert2.pem cert.pem
+docker-user@sebastien-node-1:~/.docker$ mv client-key2.pem key.pem
+
+docker --tlsverify --tlscacert=ca.pem --tlscert=cliencert2.pem --tlskey=client-key2.pem -H=tcp://192.168.0.6:2375  ps -a
+
+
+docker-user@sebastien-node-1:~/.docker$ cat dockerenv.sh 
+export DOCKER_HOST="tcp://192.168.0.6:2375"
+export DOCKER_TLS_VERIFY=1
+docker-user@sebastien-node-1:~/.docker$ source dockerenv.sh 
+docker-user@sebastien-node-1:~/.docker$ docker ps -a
+CONTAINER ID        IMAGE               COMMAND             CREATED             STATUS              PORTS               NAMES
+docker-user@sebastien-node-1:~/.docker$ 
+
+===> ca marche !
+
+
+
+
+________________
+
+possibilité de mettre le content trust afin de signer les images sur docker hub
+
+
+docker run --name registry -d -p 80:5000 registry:2.5 
+=> http://52.169.2.39/v2/
+
+docker pull cirros
+docker tag f8ce316a37a7  192.168.0.6/monrepo/cirros
+
+sur les serveurs mettre l'option insecure registry:
+ExecStart=/usr/bin/dockerd -H tcp://0.0.0.0:2375 -H tcp://0.0.0.0:2376 -H tcp://192.168.0.6:2828 -H unix:///var/run/docker.sock --tlsverify --tlscacert /etc/docker/ca2.pem --tlscert /etc/docker/server-cert2.pem --tlskey /etc/docker/server-key2.pem --insecure-registry 192.168.0.6:80
+
+docker push 192.168.0.6:80/monrepo/cirros
+=> OK
+
+
+openssl req -newkey rsa:2048 -nodes -sha256 -keyout domain.key -x509 -days 365 -out domain.crt
+
+copier les fichier dans /home/docker-user/certs
+=>docker-user@sebastien-node-3:~$ ls certs/
+=>domain.crt  domain.key
+
+
+
+docker run -d -p 80:5000 --name registry -v $(pwd)/certs:/certs -e REGISTRY_HTTP_TLS_CERTIFICATE=/certs/domain.crt -e REGISTRY_HTTP_TLS_KEY=/certs/domain.key registry:2.5
+=> ok
+
+
+supprimer le insecure registry dans le service.docker
+
+mkdir -p /etc/docker/certs.d/192.168.0.6:443
+cp /certs/domain.crt /etc/docker/certs.d/192.168.0.6:443
+
+docker push 192.168.0.6:443/monrepo/cirros
+
