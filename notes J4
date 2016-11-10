@@ -1,0 +1,241 @@
+https://github.com/4devnull
+
+
+
+formation@formation-Latitude-E5410:~$ tree .docker/machine/
+.docker/machine/
+├── certs
+│   ├── ca-key.pem
+│   ├── ca.pem
+│   ├── cert.pem
+│   └── key.pem
+├── credentials
+│   └── azure
+│       ├── 22c286ca-ba27-4792-8df5-c8ebd621a559.json
+│       └── 825160a9-2282-44b8-b33d-e95db95e4d56.tenantid
+└── machines
+    ├── sebastien-node-1
+    │   ├── ca.pem
+    │   ├── cert.pem
+    │   ├── config.json
+    │   ├── id_rsa
+    │   ├── id_rsa.pub
+    │   ├── key.pem
+    │   ├── server-key.pem
+    │   └── server.pem
+    ├── sebastien-node-2
+    │   ├── ca.pem
+    │   ├── cert.pem
+    │   ├── config.json
+    │   ├── id_rsa
+    │   ├── id_rsa.pub
+    │   ├── key.pem
+    │   ├── server-key.pem
+    │   └── server.pem
+    └── sebastien-node-3
+        ├── ca.pem
+        ├── cert.pem
+        ├── config.json
+        ├── id_rsa
+        ├── id_rsa.pub
+        ├── key.pem
+        ├── server-key.pem
+        └── server.pem
+
+
+docker-machine env sebastien-node-3
+
+eval $(docker-machine env sebastien-node-3)
+
+docker-machine ssh sebastien-node-3
+
+il y a un driver openstack de dispo
+
+
+__________________________________________
+
+git clone https://github.com/4devnull/inventoryservice.git
+docker build -t inventory-service .
+docker build -t --no-cache inventory-service . 
+docker network create mynetwork1
+docker run -d --network mynetwork1 --name myredis1 redis
+docker run -ti -d --net mynetwork1 --name myapp1 -e REDIS_HOST=myredis inventory-service
+
+
+http://172.22.0.3/
+=> ok
+
+
+________________________________________________
+
+
+
+version: "2"
+
+services:
+
+  myapplication:
+    build: ./
+    ports:
+    - "80"
+    environment:
+      REDIS_HOST: myredis
+      REDIS_PORT: 6379
+
+  myredis:
+    image: redis
+
+
+
+docker-compose up -d
+docker-compose  -f docker-compose-2.yml -f docker-compose-prod.yml  up -d
+=> permet de faire de la surcharge !! super pour changer les host ou les password par exemple
+
+docker-compose logs
+docker-compose logs myapplication
+docker-compose ps
+
+docker-compose  -p prefixdetest  up -d
+=> on relance avec un prefix
+
+docker-compose  -p  prefixdetest ps
+=> on voit la stack lancé avec le préfixe uniquement
+
+docker-compose  ps 
+=> on ne voit que la stack par defaut
+
+
+docker-compose  -p test stop
+docker-compose  -p test rm
+
+docker-compose scale myapplication=3
+docker-compose scale myapplication=4 myredis=2
+myredis sera load balancer en roundrobin
+
+pour myapplication , on  utiliser un conteneur "registrator" avec consule template en front ... mais c'est obsolette avec swarm
+
+stdin_open=true 
+=> option interessante
+
+docker-compose down
+
+
+___________________________________
+swarn
+
+
+docker login
+docker tag redis  sth35web/redis:1.0
+docker tag inventory-service  sth35web/inventory-service:1.0
+docker push sth35web/inventory-service:1.0
+docker push sth35web/redis:1.0 
+
+worker & manager
+
+
+eval $(docker-machine env sebastien-node-3)
+
+
+
+docker swarm init
+
+eval $(docker-machine env sebastien-node-1)
+docker swarm join \
+    --token SWMTKN-1-4gerwr1z5ia7gxcoeixm0xj3hxy2kvnxfebyw6qpg9gxfwbdep-2fem0nhp1oeb0i0aoxqs3yg6s \
+    192.168.0.6:2377
+
+eval $(docker-machine env sebastien-node-2)
+docker swarm join \
+    --token SWMTKN-1-4gerwr1z5ia7gxcoeixm0xj3hxy2kvnxfebyw6qpg9gxfwbdep-2fem0nhp1oeb0i0aoxqs3yg6s \
+    192.168.0.6:2377
+
+
+docker node ls
+=> il y a un leader
+
+#on ajoute les 2 autres dans le groupe des managers
+docker node promote sebastien-node-1
+docker node promote sebastien-node-2
+
+---------------------
+
+docker service create alpine ping 8.8.8.8
+docker ps
+docker logs -f 92607e465ea6
+docker service ls
+docker service --help
+
+docker service ps cocky_borg
+=> l'ensemble des container de ce service
+
+docker service create --replicas 3  nginx
+docker service ps admiring_golick
+
+
+
+
+docker service update --replicas 4 admiring_golick
+
+docker service rm admiring_golick
+
+
+docker service create --replicas 3 --publish 80:80 --name nginx nginx
+=> ca marche, meme si les container sont sur le meme noeud
+=> de plus on peut interroger n'importe quel node , meme s'il ne dispose pas du container du service
+
+
+
+
+docker service create --mode global supervision
+=> lance le container sur tous les noeuds
+
+docker service update <service> --image <image>
+=> update à chaud
+
+
+docker service update <service> --update-parallelism 2 --update-delay 5s
+
+nouveau format "DAB" en json
+
+
+cat  docker-compose-2.yml
+version: "2"
+
+services:
+
+  myapplication:
+    image: sth35web/inventory-service:1.0
+    ports:
+    - "80"
+    environment:
+      REDIS_HOST: myredis
+      REDIS_PORT: 6379
+
+  myredis:
+    image: sth35web/redis:1.0
+
+docker-compose -f docker-compose-2.yml bundle
+=> génere inventoryservice.dab
+=> c'est le fichier à livrer à la prod !
+
+
+docker deploy  inventoryservice
+=> pour Version > 1.12.3
+
+curl -sSL https://experimental.docker.com/ | sh
+
+
+docker deploy  inventoryservice
+=> ok
+=>Note: volumes are currently not supported
+
+
+docker stack ps  inventoryservice
+
+
+docker service update --publish-add 80:80 inventoryservice_myapplication
+
+http://52.169.0.101/
+=> ok
+
+docker service scale inventoryservice_myapplication=5
